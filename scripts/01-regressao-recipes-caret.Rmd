@@ -1,0 +1,211 @@
+---
+title: "Regressão, recipes e caret"
+output: html_document
+---
+
+## Pacotes
+
+```{r}
+# install.packages("tidyverse")
+# install.packages("recipes")
+# install.packages("caret")
+
+library(tidyverse)
+library(recipes)
+library(caret)
+```
+
+## Regressão linear
+
+```{r}
+# dados ----------------------------
+cars
+help(cars)
+```
+
+
+```{r}
+ggplot(cars, aes(speed, dist)) +
+  geom_point() +
+  theme_bw()
+```
+
+A relação entre x e y vai ser descrita por uma função f(x) tal que
+
+$$
+y \approx f(x)
+$$
+
+Queremos encontrar uma f(x) que, para cada novo x, nos dê uma estimativa precisa de y.
+
+O modelo de regressão linear simples é dado por:
+
+$$
+f(x) = \beta_0 + \beta_1x
+$$
+
+- $\beta_0$ é chamado de intercepto
+- $\beta_1$ é chamado de coeficiente angular
+
+
+```{r}
+ggplot(cars, aes(speed, dist)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+```
+
+
+As estimativas de $\beta_0$ e $\beta_1$ serão os valores que minimizam a expressão
+
+$$
+L(y, f(x)) = \sum_{i=i}^{n} (y - f(x))^2 = \sum_{i=i}^{n} (y - (\beta_0 + \beta_1x))^2
+$$
+
+No R, podemos fazer isso facilmente usando a função `lm()`.
+
+```{r}
+ajuste <- lm(dist ~ speed, cars)
+summary(ajuste)
+```
+
+E se quiséssemos fazer predições:
+
+```{r}
+novas_obs <- data.frame(speed = seq(5, 25, by = 5))
+predict(ajuste, novas_obs)
+```
+
+Em geral, fazer modelagem preditiva envolve 3 tarefas:
+
+- especificar o modelo
+- treinar o modelo
+- gerar predições
+
+## Pacote recipes
+
+Vamos utilizar o pacote `recipes` como um ambiente padronizado para especificação de modelos.
+
+
+O pacote tem quatro principais funções:
+
+- `recipe()`: especifica o que você pretende fazer.
+
+- `step_()`: indica as possíveis transformações na base.
+
+- `prepare()`: faz os cálculos necessários para a aplicação das modificações.
+
+- `bake()`: aplica as modificações a uma base da dados.
+
+## Exemplo
+
+Vamos supor que recebemos mais preditores para a base de carros.
+
+```{r}
+n <- nrow(cars)
+
+cars_v2 <- cars %>% 
+  mutate(
+    montadora = sample(c("inglesa", "alema"), n, replace = TRUE),
+    experiencia = rnorm(n, 40, 4),
+    chuva = rbernoulli(n, p = ifelse(cars$dist > mean(cars$dist), 0.8, 0.2)),
+    chuva = ifelse(chuva, "sim", "não")
+  )
+
+View(cars_v2)
+```
+
+Criamos a especificação do modelo criando receitas.
+
+```{r}
+receita <- recipe(dist ~ ., data = cars_v2) %>% 
+  step_dummy(all_nominal()) %>% 
+  step_log(dist)
+
+prep <- prep(receita, data = cars_v2)
+
+base_treino <- bake(prep, cars_v2)
+
+ajuste <- lm(dist ~ ., base_treino)
+summary(ajuste)
+```
+
+## Caret
+
+- Abreviação de *Classification And Regression Training*.
+
+- Padroniza o ajuste de modelos preditivos no R.
+
+- Também padroniza a forma de avaliar os resultados e fazer predições.
+
+- Podemo especificar os modelos diretamente a partir do `recipes`.
+
+- Abstrai a aplicação de diversos tipos de validação cruzada.
+
+- Permite processamento em paralelo.
+
+Para ajustar um modelo, sempre utilizamos a função `train()`.
+
+```{r}
+modelo <- train(
+  receita, 
+  cars_v2, 
+  method = "lm"
+)
+
+modelo
+
+# Para acessar o modelo final
+summary(modelo$finalModel)
+
+# Função para avaliar a "importância" de cada preditor
+varImp(modelo)
+```
+
+## Exercício (diamonds)
+
+Queremos prever o valor de um diamante a partir das características de cada pedra.
+
+```{r}
+diamantes <- ggplot2::diamonds
+glimpse(diamantes)
+
+# Vamos transformar as variáveis ordinais em categóricas
+
+diamantes <- diamantes %>%
+  mutate(
+    cut = as.character(cut),
+    color = as.character(color),
+    clarity = as.character(clarity)
+  )
+
+# Criando uma base de "novas observações"
+id_novos <- sample(1:nrow(diamantes), size = 1000)
+
+diamantes_novos <- slice(diamantes, id_novos)
+diamantes <- slice(diamantes, -id_novos)
+```
+
+Vamos usar o pacote `recipes` para especificar nosso modelo.
+
+- Transforme todas as variáveis categóricas em variáveis indicadoras.
+- Retire preditores muito correlacionados.
+- Retire preditores com variância muito baixa.
+
+```{r}
+
+```
+
+Ajuste o modelo usando a função `train()` do pacote `caret`.
+
+```{r}
+
+```
+
+Faça as previsões para a base de novos diamentes.
+
+```{r}
+
+```
+
+
