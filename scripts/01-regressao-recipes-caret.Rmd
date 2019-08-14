@@ -41,7 +41,7 @@ Queremos encontrar uma f(x) que, para cada novo x, nos dê uma estimativa precis
 O modelo de regressão linear simples é dado por:
 
 $$
-f(x) = \beta_0 + \beta_1x
+y = \beta_0 + \beta_1x
 $$
 
 - $\beta_0$ é chamado de intercepto
@@ -55,6 +55,9 @@ ggplot(cars, aes(speed, dist)) +
   theme_bw()
 ```
 
+$$
+y = a
+$$
 
 As estimativas de $\beta_0$ e $\beta_1$ serão os valores que minimizam a expressão
 
@@ -65,7 +68,7 @@ $$
 No R, podemos fazer isso facilmente usando a função `lm()`.
 
 ```{r}
-ajuste <- lm(dist ~ speed, cars)
+ajuste <- lm(dist ~ speed, data = cars)
 summary(ajuste)
 ```
 
@@ -73,6 +76,14 @@ E se quiséssemos fazer predições:
 
 ```{r}
 novas_obs <- data.frame(speed = seq(5, 25, by = 5))
+
+novas_obs %>% 
+  mutate(
+    valores_preditos = predict(ajuste, novas_obs)
+  ) %>% 
+  ggplot(aes(x = speed, y = valores_preditos)) +
+  geom_point()
+
 predict(ajuste, novas_obs)
 ```
 
@@ -113,6 +124,18 @@ cars_v2 <- cars %>%
   )
 
 View(cars_v2)
+
+cars_v2 %>% 
+  ggplot(aes(x = chuva, y = dist)) +
+  geom_boxplot()
+
+cars_v2 %>% 
+  ggplot(aes(x = montadora, y = dist)) +
+  geom_boxplot()
+
+cars_v2 %>% 
+  ggplot(aes(x = experiencia, y = dist)) +
+  geom_point()
 ```
 
 Criamos a especificação do modelo criando receitas.
@@ -120,10 +143,10 @@ Criamos a especificação do modelo criando receitas.
 ```{r}
 receita <- recipe(dist ~ ., data = cars_v2) %>% 
   step_dummy(all_nominal()) %>% 
-  step_log(dist)
+  step_log(dist) %>% 
+  step_center(speed)
 
 prep <- prep(receita, data = cars_v2)
-
 base_treino <- bake(prep, cars_v2)
 
 ajuste <- lm(dist ~ ., base_treino)
@@ -138,7 +161,7 @@ summary(ajuste)
 
 - Também padroniza a forma de avaliar os resultados e fazer predições.
 
-- Podemo especificar os modelos diretamente a partir do `recipes`.
+- Podemos especificar os modelos diretamente a partir do `recipes`.
 
 - Abstrai a aplicação de diversos tipos de validação cruzada.
 
@@ -147,6 +170,11 @@ summary(ajuste)
 Para ajustar um modelo, sempre utilizamos a função `train()`.
 
 ```{r}
+receita <- recipe(dist ~ ., data = cars_v2) %>% 
+  step_dummy(all_nominal()) %>% 
+  step_rm(speed) %>% 
+  step_log(dist)
+
 modelo <- train(
   receita, 
   cars_v2, 
@@ -189,23 +217,60 @@ diamantes <- slice(diamantes, -id_novos)
 Vamos usar o pacote `recipes` para especificar nosso modelo.
 
 - Transforme todas as variáveis categóricas em variáveis indicadoras.
-- Retire preditores muito correlacionados.
-- Retire preditores com variância muito baixa.
+- Retire preditores muito correlacionados. `step_corr`
+- Retire preditores com variância muito baixa. `step_nzv`
 
 ```{r}
+receita <- recipe(price ~ ., diamantes) %>%
+  step_corr(all_predictors(), -all_nominal()) %>% 
+  step_nzv(all_predictors()) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+  
+prep <- prep(receita, diamantes)
 
+amelia # pacote para visualizar NAs
 ```
 
 Ajuste o modelo usando a função `train()` do pacote `caret`.
 
 ```{r}
+modelo <- train(
+  receita,
+  diamantes,
+  method = "lm"
+)
 
+modelo
 ```
 
 Faça as previsões para a base de novos diamentes.
 
 ```{r}
+ggplot(diamantes, aes(x = price)) +
+  geom_histogram()
 
+diamantes_novos %>% 
+  mutate(
+    valores_preditos = predict(modelo, diamantes_novos)
+  ) %>% 
+  ggplot(aes(x = price, y = valores_preditos)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "blue")
+```
+
+Helpers recipes
+
+```{r}
+all_nominal()
+all_numeric()
+all_outcomes()
+all_predictors()
+```
+
+Predição no caret
+
+```{r}
+predict(modelo, base_nova)
 ```
 
 
