@@ -30,6 +30,8 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+#62.1
+
 # Ajustando modelo quadrático ---------------------------------------------
 
 modelo <- train(y ~ poly(x, 2), data = df, method = "lm")
@@ -41,6 +43,8 @@ ggplot(df, aes(x = x, y = y)) +
 df %>% 
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
+
+#60.1
 
 # Ajustando modelo cúbico -------------------------------------------------
 
@@ -54,6 +58,7 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+#52.2
 
 # Ajustando modelo de grau 9 ---------------------------------------------
 
@@ -69,6 +74,7 @@ df %>%
 
 modelo$finalModel
 
+#0.441
 
 # Resumo ------------------------------------------------------------------
 
@@ -151,6 +157,8 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+# 62.6
+
 modelo$finalModel
 
 # Exercício ---------------------------------------------------------------
@@ -184,7 +192,7 @@ df <- df %>%
   mutate(
     base = sample(
       c("treino", "teste"), 
-      size = nrow(df), 
+      size = nrow(df),
       replace = TRUE, 
       prob = c(0.7, 0.3)
     )
@@ -193,27 +201,38 @@ df <- df %>%
 df_treino <- df %>% filter(base == "treino")
 df_teste <- df %>% filter(base == "teste")
 
-# calcula_erros_teste <- function(df, nova_base, grau) {
-#   
-#   acc <- tibble(grau = NA, acc = NA)
-#   
-#   for(g in grau) {
-#     
-#     modelo <- glm(y ~ poly(x, g, raw = TRUE), data = df, family = binomial)
-#     
-#     prop <- nova_base %>% 
-#       mutate(
-#         predicao = predict(modelo, nova_base, type = "response"),
-#         predicao = ifelse(predicao > 0.5, 1, 0),
-#         acerto = ifelse(predicao == y, 1, 0)
-#       ) %>% 
-#       summarise(prop_acerto = mean(acerto)) %>%
-#       .$prop_acerto
-#     
-#     acc <- rbind(acc, c(g, prop))
-#   }
-#   
-#   na.omit(acc)
-# }
-# 
-# calcula_erros_teste(df = df_treino, nova_base = df_teste, grau = 1:5)
+calcula_erros_teste <- function(df, nova_base, grau) {
+
+  acc <- tibble(grau = NA, acc = NA)
+
+  for(g in grau) {
+
+    modelo <- glm(
+      y ~ poly(x, g, raw = TRUE), 
+      data = df, 
+      family = binomial
+    )
+
+    prop <- nova_base %>%
+      mutate(
+        predicao = predict(modelo, nova_base, type = "response"),
+        predicao = ifelse(predicao > 0.5, 1, 0),
+        acerto = ifelse(predicao == y, 1, 0)
+      ) %>%
+      summarise(prop_acerto = mean(acerto)) %>%
+      .$prop_acerto
+
+    acc <- rbind(acc, c(g, prop))
+  }
+
+  na.omit(acc)
+}
+
+calcula_erros_teste(df = df_treino, nova_base = df_teste, grau = 1:5)
+
+train(
+  y ~ poly(x, 2, raw = TRUE), 
+  data = df_treino,
+  method = "glm",
+  family = binomial
+)
