@@ -273,4 +273,14 @@ Predição no caret
 predict(modelo, base_nova)
 ```
 
+RMSE
 
+$$
+\sqrt{\sum(y_{obs} - y_{pred})^2/n}
+$$
+
+MAE
+
+$$
+\sum|y_{obs} - y_{pred}|/n
+$$

@@ -30,6 +30,8 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+#62.1
+
 # Ajustando modelo quadrático ---------------------------------------------
 
 modelo <- train(y ~ poly(x, 2), data = df, method = "lm")
@@ -41,6 +43,8 @@ ggplot(df, aes(x = x, y = y)) +
 df %>% 
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
+
+#60.1
 
 # Ajustando modelo cúbico -------------------------------------------------
 
@@ -54,6 +58,7 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+#52.2
 
 # Ajustando modelo de grau 9 ---------------------------------------------
 
@@ -69,6 +74,7 @@ df %>%
 
 modelo$finalModel
 
+#0.441
 
 # Resumo ------------------------------------------------------------------
 
@@ -151,6 +157,8 @@ df %>%
   mutate(predicao = predict(modelo, df)) %>% 
   summarise(rmse = sqrt(mean((predicao - y)^2)))
 
+# 62.6
+
 modelo$finalModel
 
 # Exercício ---------------------------------------------------------------
@@ -184,7 +192,7 @@ df <- df %>%
   mutate(
     base = sample(
       c("treino", "teste"), 
-      size = nrow(df), 
+      size = nrow(df),
       replace = TRUE, 
       prob = c(0.7, 0.3)
     )
@@ -199,7 +207,12 @@ calcula_erros_teste <- function(df, nova_base, grau) {
 
   for(g in grau) {
 
-    modelo <- glm(y ~ poly(x, g, raw = TRUE), data = df, family = binomial)
+
+    modelo <- glm(
+      y ~ poly(x, g, raw = TRUE), 
+      data = df, 
+      family = binomial
+    )
 
     prop <- nova_base %>%
       mutate(
@@ -217,3 +230,11 @@ calcula_erros_teste <- function(df, nova_base, grau) {
 }
 
 calcula_erros_teste(df = df_treino, nova_base = df_teste, grau = 1:5)
+
+
+train(
+  y ~ poly(x, 2, raw = TRUE), 
+  data = df_treino,
+  method = "glm",
+  family = binomial
+)

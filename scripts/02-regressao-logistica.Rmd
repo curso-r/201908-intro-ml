@@ -115,6 +115,7 @@ Precisamos definir então quando escolhemos Y = 1 e Y = 0.
 
 ```{r}
 # install.packages("rsample")
+# install.packages("skimr")
 
 library(tidyverse)
 library(recipes)
@@ -152,7 +153,7 @@ modelo <- train(
   receita, 
   credit_data, 
   method = "glm", 
-  family = "binomial"
+  family = binomial
 )
 
 modelo
@@ -171,7 +172,7 @@ credit_data %>%
 
 - especificidade: taxa de *true negatives", entre os maus clientes, quantos foram previstos como maus clientes.
 
-- curva ROC
+- área sob a curva ROC
 
 
 ```{r}
@@ -190,7 +191,20 @@ tibble(
   class_predita = ifelse(prob_predita >= 0.5, "good", "bad")
 ) %>% View()
 
-plot.roc(credit_data$Status, modelo$finalModel$fitted.values, legacy.axes = TRUE)
+plot.roc(
+  credit_data$Status, 
+  modelo$finalModel$fitted.values, 
+  legacy.axes = TRUE
+)
+
+a <- pROC::roc(
+  credit_data$Status, 
+  modelo$finalModel$fitted.values
+)
+
+a$thresholds
+a$sensitivities
+a$specificities
 ```
 
 # Exercício
@@ -206,5 +220,48 @@ library(rsample)
 
 data(attrition, package = "rsample")
 glimpse(attrition)
+
+skim(attrition)
+```
+
+```{r}
+receita <- recipe(Attrition ~ ., data = attrition) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_corr(all_predictors()) %>%
+  step_nzv(all_predictors())
+
+modelo <- train(
+  receita,
+  attrition,
+  method = "glm",
+  family = binomial
+)
+
+modelo
+
+attrition %>% 
+  mutate(
+    predicao = predict(modelo, attrition)
+  ) %>% 
+  count(Attrition, predicao)
+
+114/(123 + 114)
+1201/(1201+32)
+
+attrition %>% 
+  count(Attrition) %>% 
+  mutate(prop = n/sum(n))
+
+attrition %>% 
+  mutate(
+    predicao = predict(modelo, attrition),
+    acerto = ifelse(predicao == Attrition, 1, 0)
+  ) %>% 
+  summarise(acc = mean(acerto))
+
+pROC::roc(
+  attrition$Attrition, 
+  modelo$finalModel$fitted.values
+)
 ```
 
