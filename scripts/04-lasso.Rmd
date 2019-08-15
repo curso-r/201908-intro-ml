@@ -1,0 +1,256 @@
+
+# Regularização
+
+- Penalizar os coeficientes no processo de estimação
+- Encolher os coeficientes na direção do zero 
+- Diminui a variância do modelo em troca de um pouco de viés
+
+$$
+f(X) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \cdots + \beta_p X_p
+$$
+
+Regressão ridge
+
+$$
+L(y, f(x)) + \lambda\sum_{i=1}^p\beta_i^2
+$$
+
+LASSO
+
+$$
+L(y, f(x)) + \lambda\sum_{i=1}^p|\beta_i|
+$$
+
+
+$$
+\sum_{i=i}^{n} (y - (\beta_0 + \beta_1x_1 + \beta_2x_2))^2 + \lambda|\beta_1| + \lambda|\beta_2|
+$$
+
+Se lambda for infinito, o modelo final sera apenas o beta_0.
+Se o lambda for zero, o modelo final sera igual ao modelo sem regularizacao.
+
+
+
+#---##############################################################
+# LASSO
+#---##############################################################
+
+# Pacotes
+
+```{r}
+# install.packages("rsample")
+
+library(tidyverse)
+library(recipes)
+library(caret)
+library(rsample)
+library(skimr)
+```
+
+# Banco de dados
+
+```{r}
+data("credit_data")
+glimpse(credit_data)
+```
+
+```{r}
+skim(credit_data)
+
+credit_data %>% 
+  group_by(Status) %>% 
+  skim()
+```
+
+# Ajustando LASSO no CARET -----------------------------------------------------
+```{r}
+infos <- getModelInfo("glmnet")$glmnet
+infos$parameters
+```
+
+# Definição e ajuste do modelo
+
+```{r}
+set.seed(42)
+
+# dataprep
+receita <- recipe(Status ~ ., data = credit_data) %>%
+  step_meanimpute(all_numeric(), -all_outcomes()) %>%
+  step_modeimpute(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_corr(all_predictors()) %>%
+  step_nzv(all_predictors())
+
+# especificacoes da reamostragem e da natureza da resposta (classificacao)
+train_control_lasso <- caret::trainControl(
+  method = "cv",
+  number = 5,
+  search = "grid",
+  verboseIter = TRUE,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE
+)
+
+# grid search de hiperparametros
+# infos$parameters
+# infos$grid
+tune_grid <- data.frame(
+  alpha = 1,
+  lambda = c(0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1)
+)
+
+modelo <- train(
+  receita, 
+  credit_data, 
+  trControl = train_control_lasso,
+  tuneGrid = tune_grid,
+  method = "glmnet",
+  metric = "ROC",
+  family = "binomial"
+)
+```
+
+# Encontrando o melhor modelo ajustado
+
+```{r}
+modelo
+plot(modelo)
+modelo$results
+
+ggplot(modelo$results, aes(x = lambda, y = ROC, ymin = ROC - ROCSD, ymax = ROC + ROCSD)) +
+  geom_pointrange() +
+  geom_line() +
+  scale_x_log10()
+```
+
+# Importancia das variaveis
+
+```{r}
+varImp(modelo)
+```
+
+# Fazendo predicoes
+
+```{r}
+# predict(modelo, newdata = credit_data)
+# predict(modelo, newdata = credit_data, type = "probs")
+# predict(modelo, newdata = credit_data, type = "probs")$good
+
+credit_data_com_predicoes <- credit_data %>%
+  mutate(
+    Status_pred_lasso = predict(modelo, newdata = credit_data, type = "probs")$bad
+  )
+```
+
+# Avaliando o desempenho do modelo final
+
+```{r}
+# densidade
+credit_data_com_predicoes %>%
+  ggplot(aes(x = Status_pred_lasso, fill = Status, colour = Status)) +
+  geom_density(alpha = 0.1) +
+  theme_minimal()
+```
+
+```{r}
+# Curvas Acumuladas (KS)
+library(MLmetrics)
+ks <- MLmetrics::KS_Stat(
+  credit_data_com_predicoes$Status_pred_lasso, 
+  as.numeric(credit_data_com_predicoes$Status == "bad")
+)
+
+credit_data_com_predicoes %>%
+  ggplot(aes(x = Status_pred_lasso, fill = Status, colour = Status)) +
+  stat_ecdf() +
+  theme_minimal() 
+```
+
+```{r}
+# Curvas ROC
+library(AUC)
+roc <- AUC::roc(
+  credit_data_com_predicoes$Status_pred_lasso, 
+  factor(credit_data_com_predicoes$Status == "bad")
+)
+
+AUC::auc(roc)
+
+plot(roc)
+```
+
+```{r}
+# percentis
+quantis = quantile(credit_data_com_predicoes$Status_pred_lasso, probs = seq(0, 1, by = 0.1))
+
+credit_data_com_predicoes %>%
+  mutate(
+    Status_pred_lasso_percentis = cut(Status_pred_lasso, labels = names(quantis[-length(quantis)]), breaks = quantis, include.lowest = TRUE)
+  ) %>%
+  group_by(Status_pred_lasso_percentis) %>%
+  summarise(
+    n = n(),
+    p_bad = sum(Status == "bad")/n
+  ) %>%
+  ggplot(aes(x = Status_pred_lasso_percentis, y = p_bad)) +
+  geom_col(fill = "royalblue") +
+  theme_minimal()
+```
+
+
+# Exercício ------------------
+
+```{r}
+diamantes <- ggplot2::diamonds
+
+# retirar linhas que estão erradas.
+diamantes <- diamantes %>% 
+  mutate(
+    depth2 = round(2 * z / (x + y), 3)*100, 
+    teste = near(depth, depth2, tol = 1)
+  ) %>% 
+  filter(teste == TRUE) %>% 
+  select(-depth2, -teste)
+
+# transformar variaveis em caracter
+diamantes <- diamantes %>% 
+  mutate_at(vars(cut, color, clarity), as.character)
+
+id_train <- sample.int(nrow(diamantes), 0.8*nrow(diamantes))
+train <- diamantes[id_train,]
+valid <- diamantes[-id_train,]
+```
+
+# Exercicio 1
+```{r}
+# Receita 
+receita <- recipe(price ~ ., data = train)
+  # colocar steps
+```
+
+# Exercicio 2
+```{r}
+# Train Control
+# Definir trainControl para regressao
+```
+
+# Exercicio 3
+```{r}
+# Tune grid
+# Criar tune_grid para LASSO (glmnet)
+# Dica: olhar o getModelInfo("glmnet")$glmnet
+```
+
+# Exercicio 4
+```{r}
+# Treinar modelo glmnet para regressao
+# Escolha a metrica MAE
+```
+
+
+
+
+
+
+
+

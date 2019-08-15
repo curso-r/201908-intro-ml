@@ -1,0 +1,102 @@
+---
+title: "Estratégias"
+author: "Curso-R"
+date: ""
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: ["default", "default-fonts", "custom.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+
+# Vamos falar de
+
+- Viés e variância
+
+- Erro de treino e erro de teste
+
+- Hiperparâmetros 
+
+- Validação cruzada
+
+- CARET
+
+- Avaliação de Modelos
+
+- Regularização
+
+---
+
+
+# Viés e variância
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*v63L_h5WXGOb4o6oh_daAA.jpeg">
+
+
+---
+
+# Estimando a performance do modelo
+
+- **Erro de treino**: é o erro encontrado ao aplicar o modelo na própria base utilizada para treiná-lo.
+
+- **Erro de teste**: é o erro encontrado ao aplicar o modelo a uma base não utilizada no treino.
+
+<img src="img/erro_treino_erro_teste.png" width = '50%'>
+
+**Validação cruzada** é usada para aprimorar a estimativa do **erro de teste** sem comprometer a qualidade das estimativas!
+
+
+
+---
+
+# Hiperparâmetros
+
+Hiperparâmetros são parâmetros ligados à complexidade do modelo que devem ser escolhidos antes do ajuste.
+
+Por exemplo, considere um modelo polinomial:
+
+$$f(X) = \beta_0  + \beta_1 * X + \beta_2 * X^2 + \beta_3 * X^3 + \cdots + \beta_{p} * X^{p}$$
+
+Para selecionar o melhor $p$ podemos utilizar **validação cruzada** (método de reamostragem para estimar o erro preditivo de um modelo).
+
+--
+
+- Leave-one-out cross-validation (LOOCV)
+- K-fold cross-validation
+
+---
+
+# k-fold
+
+- geralmente, k = 5 ou k = 10.
+
+```{r}
+knitr::include_graphics("img/k-fold-cv.png")
+```
+
+---
+
+# LOOCV
+
+- caso particular, apenas para conhecimento. Computacionalmente inviável.
+
+```{r}
+knitr::include_graphics("img/loocv.png")
+```
+
+---
+
+# Atenção especial quando o tempo está envolvido.
+
+![](http://topepo.github.io/caret/splitting/Split_time-1.svg)
+
+---
+
+# Exemplo no R
+
+
+<img src="https://media.giphy.com/media/o0vwzuFwCGAFO/giphy.gif" style = "display: block; margin-left: auto; margin-right: auto;">
