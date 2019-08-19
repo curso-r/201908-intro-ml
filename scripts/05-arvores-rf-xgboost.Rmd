@@ -1,0 +1,258 @@
+---
+title: "Árvore, Random Forest e XGBoost"
+output: html_notebook
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(AmesHousing)
+library(recipes)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(ranger)
+library(xgboost)
+library(AUC)
+```
+
+# Data prep
+
+```{r}
+data("credit_data")
+
+set.seed(42)
+credit_data <- credit_data %>%
+  mutate(
+    base = if_else(runif(nrow(credit_data)) < 0.7, "treino", "teste")
+  )
+
+receita <- recipe(Status ~ ., data = credit_data %>% filter(base == "treino") %>% select(-base)) %>%
+  step_meanimpute(all_numeric(), -all_outcomes()) %>%
+  step_modeimpute(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_corr(all_predictors()) %>%
+  step_nzv(all_predictors())
+```
+
+
+# Árvore de decisão
+
+
+```{r}
+train_control_rpart <- trainControl(
+  method = "cv", 
+  number = 5, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  verboseIter = 1 
+)
+
+# DICA: rode
+# info <- getModelInfo("rpart", FALSE)$rpart
+# info$parameters
+
+grid_rpart <- data.frame(
+  cp = seq(-0.001, 0.01, by= 0.0001)
+)
+
+modelo_rpart <- train(
+  receita, 
+  credit_data %>% filter(base == "treino") %>% select(-base), 
+  method = "rpart", 
+  metric = "ROC",
+  trControl = train_control_rpart,
+  tuneGrid = grid_rpart
+)
+```
+
+## Resultado
+
+```{r}
+modelo_rpart
+modelo_rpart$bestTune
+varImp(modelo_rpart)
+plot(modelo_rpart)
+```
+
+```{r}
+# apenas para arvores
+rpart.plot(modelo_rpart$finalModel)
+
+pdf("arvore.pdf", 20, 10)
+rpart.plot(modelo_rpart$finalModel)
+dev.off()
+```
+
+
+```{r}
+# Matriz de confusão
+credit_data <- credit_data %>% mutate(pred_rpart = predict(modelo_rpart, ., type = "prob")$bad)
+
+credit_data_teste <- credit_data %>% filter(base %in% "teste")
+caret::confusionMatrix(predict(modelo_rpart, credit_data_teste), credit_data_teste$Status, mode = "everything")
+```
+
+```{r}
+# Curva ROC
+credit_data_teste <- credit_data %>%
+  filter(base %in% "teste") %>%
+  mutate(
+    Status_para_roc = factor(if_else(Status == "good", 0, 1))
+  ) 
+
+roc_teste <- roc(credit_data_teste$pred_rpart, credit_data_teste$Status_para_roc)
+auc(roc_teste)
+plot(roc_teste)
+```
+
+
+```{r}
+#curva ROC extra  ---- cuidado: códigos de R avançados!
+roc_rpart <- credit_data %>%
+  mutate(
+    Status_para_roc = factor(if_else(Status == "good", 0, 1))
+  ) %>%
+  group_by(base) %>%
+  nest() %>%
+  mutate(
+    roc = map(data, ~ roc(.x$pred_rpart, .x$Status_para_roc)),
+    auc = map_dbl(roc, auc)
+  )
+
+roc_rpart$roc %>% walk(plot)
+```
+
+```{r}
+# gráfico extra ---- cuidado: códigos de R avançados!
+roc_plot <- roc_rpart %>%
+  select(base, roc, auc) %>%
+  mutate(
+    roc = map(roc, ~{
+      .x %>% 
+        unclass %>% 
+        as.data.frame
+    })
+  ) %>%
+  unnest %>%
+  ggplot(aes(x = fpr, y = tpr, colour = base, label = cutoffs)) +
+  geom_line() +
+  geom_abline(colour = "grey50") +
+  theme_minimal() +
+  coord_fixed()
+
+plotly::ggplotly(roc_plot)
+```
+
+
+# Random Forest 
+
+```{r}
+train_control_rf <- trainControl(
+  method = "cv", 
+  number = 5, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  verboseIter = 1
+)
+
+# DICA: rode
+# info <- getModelInfo("ranger", FALSE)$ranger
+# info$parameters
+
+grid_rf <- expand.grid(
+  mtry = c(2, 4, 6), # PREENCHA AQUI
+  min.node.size = seq(10, 100, by = 20),
+  splitrule = "gini"
+)
+
+modelo_rf <- train(
+  receita, 
+  credit_data %>% filter(base %in% "treino") %>% select(-base), 
+  method = "ranger", #PREENCHA AQUI
+  importance = "permutation",
+  metric = "ROC",
+  trControl = train_control_rf,
+  tuneGrid = grid_rf
+)
+```
+
+## Resultado
+```{r}
+modelo_rf
+modelo_rf$bestTune
+varImp(modelo_rf)
+plot(modelo_rf)
+```
+
+```{r}
+# Predicoes
+
+credit_data <- credit_data %>% mutate(pred_rf = predict(modelo_rf, ., type = "prob")$bad)
+```
+
+
+```{r}
+# Matriz de confusão
+credit_data_teste <- credit_data %>% filter(base %in% "teste")
+caret::confusionMatrix(predict(modelo_rf, credit_data_teste), credit_data_teste$Status, mode = "everything")
+```
+
+```{r}
+#curva ROC  ---- cuidado: códigos de R avançados!
+rocs <- credit_data %>%
+  mutate(
+    Status_para_roc = factor(if_else(Status == "good", 0, 1))
+  ) %>%
+  select(base, Status_para_roc, starts_with("pred")) %>%
+  gather(modelo, valor_predito, starts_with("pred")) %>%
+  group_by(base, modelo) %>%
+  nest() %>%
+  mutate(
+    roc = map(data, ~ roc(.x$valor_predito, .x$Status_para_roc)),
+    auc = map_dbl(roc, auc)
+  )
+
+rocs
+```
+
+```{r}
+# Comparacao de modelos
+rocs %>%
+  ggplot(aes(x = auc, y = modelo, colour = base)) +
+  geom_point(size = 5)
+```
+
+
+```{r}
+# gráfico extra ---- cuidado: códigos de R avançados!
+roc_plot <- rocs %>%
+  select(base, modelo, roc) %>%
+  mutate(
+    roc = map(roc, ~{
+      .x %>% 
+        unclass %>% 
+        as.data.frame
+    })
+  ) %>%
+  unnest %>%
+  ggplot(aes(x = fpr, y = tpr, colour = modelo, label = cutoffs)) +
+  geom_line() +
+  geom_abline(colour = "grey50") +
+  theme_minimal() +
+  coord_fixed() +
+  facet_wrap(~base)
+
+plotly::ggplotly(roc_plot)
+```
+
+
+
+
+
+# XGBoost
+
+Exercício: Ajuste um xgboost usando o caret e responda: qual modelo apresenta a maior AUC? crtl+C ctrl+V por sua conta!
+
+DICA 1) troque "ranger" por "xgbTree"
+DICA 2) rode `info <- getModelInfo("xgbTree", FALSE)$xgbTree` e depois consulte `info$parameters`.
+DICA 3) experimente usar o parâmetro `tuneLength = 20` em vez do ``tuneGrid`.

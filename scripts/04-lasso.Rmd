@@ -9,10 +9,15 @@ $$
 f(X) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \cdots + \beta_p X_p
 $$
 
+MSE (RMSE é a raiz quadrada do MSE )
+$$
+L(y, f(x)) = \sum_{i=i}^{n} (y - (\beta_0 + \beta_1x_1 + \beta_2x_2))^2/n
+$$
+
 Regressão ridge
 
 $$
-L(y, f(x)) + \lambda\sum_{i=1}^p\beta_i^2
+\sum_{i=i}^{n} (y - (\beta_0 + \beta_1x_1 + \beta_2x_2))^2/n + \lambda\sum_{i=1}^p\beta_i^2  + \lambda\sum_{i=1}^p|\beta_i|
 $$
 
 LASSO
@@ -38,6 +43,7 @@ Se o lambda for zero, o modelo final sera igual ao modelo sem regularizacao.
 # Pacotes
 
 ```{r}
+# CTRL ALT N
 # install.packages("rsample")
 
 library(tidyverse)
@@ -62,8 +68,14 @@ credit_data %>%
   skim()
 ```
 
+```{r}
+credit_data %>% count(Status)
+```
+
+
 # Ajustando LASSO no CARET -----------------------------------------------------
 ```{r}
+infos <- getModelInfo("lasso")
 infos <- getModelInfo("glmnet")$glmnet
 infos$parameters
 ```
@@ -134,12 +146,13 @@ varImp(modelo)
 ```{r}
 # predict(modelo, newdata = credit_data)
 # predict(modelo, newdata = credit_data, type = "probs")
-# predict(modelo, newdata = credit_data, type = "probs")$good
+# predict(modelo, newdata = credit_data, type = "probs")$bad
 
 credit_data_com_predicoes <- credit_data %>%
   mutate(
     Status_pred_lasso = predict(modelo, newdata = credit_data, type = "probs")$bad
-  )
+  ) %>%
+  select(Status, Status_pred_lasso, dplyr::everything())
 ```
 
 # Avaliando o desempenho do modelo final
@@ -155,10 +168,17 @@ credit_data_com_predicoes %>%
 ```{r}
 # Curvas Acumuladas (KS)
 library(MLmetrics)
+# ks, auc, gini, kappa -> o "rmse" da classificacao
 ks <- MLmetrics::KS_Stat(
   credit_data_com_predicoes$Status_pred_lasso, 
   as.numeric(credit_data_com_predicoes$Status == "bad")
 )
+
+MLmetrics::Gini(
+  credit_data_com_predicoes$Status_pred_lasso, 
+  as.numeric(credit_data_com_predicoes$Status == "bad")
+)
+
 
 credit_data_com_predicoes %>%
   ggplot(aes(x = Status_pred_lasso, fill = Status, colour = Status)) +
@@ -168,6 +188,7 @@ credit_data_com_predicoes %>%
 
 ```{r}
 # Curvas ROC
+
 library(AUC)
 roc <- AUC::roc(
   credit_data_com_predicoes$Status_pred_lasso, 
@@ -215,23 +236,35 @@ diamantes <- diamantes %>%
 # transformar variaveis em caracter
 diamantes <- diamantes %>% 
   mutate_at(vars(cut, color, clarity), as.character)
-
+runif(42)
 id_train <- sample.int(nrow(diamantes), 0.8*nrow(diamantes))
-train <- diamantes[id_train,]
+treino <- diamantes[id_train,]
 valid <- diamantes[-id_train,]
 ```
 
 # Exercicio 1
 ```{r}
 # Receita 
-receita <- recipe(price ~ ., data = train)
-  # colocar steps
+receita <- recipe(price ~ ., data = treino) %>%
+  step_poly(all_numeric(), -all_outcomes()) %>% 
+  step_center(all_numeric(), -all_outcomes()) %>% 
+  step_scale(all_numeric(), -all_outcomes()) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_predictors()) 
 ```
 
 # Exercicio 2
 ```{r}
 # Train Control
 # Definir trainControl para regressao
+train_control_lasso <- caret::trainControl(
+  method = "cv",
+  number = 5,
+  search = "grid",
+  verboseIter = TRUE
+  # summaryFunction = twoClassSummary,
+  # classProbs = TRUE
+)
 ```
 
 # Exercicio 3
@@ -239,15 +272,50 @@ receita <- recipe(price ~ ., data = train)
 # Tune grid
 # Criar tune_grid para LASSO (glmnet)
 # Dica: olhar o getModelInfo("glmnet")$glmnet
+tune_grid <- data.frame(
+  alpha = 1,
+  lambda = 10^(3-(1:12))
+)
 ```
 
 # Exercicio 4
 ```{r}
 # Treinar modelo glmnet para regressao
 # Escolha a metrica MAE
+
+modelo <- train(
+  receita, 
+  treino, 
+  trControl = train_control_lasso,
+  tuneGrid = tune_grid,
+  method = "glmnet",
+  metric = "MAE"
+  # family = "binomial"
+)
+```
+```{r}
+ggplot(modelo$results, aes(x = lambda, y = MAE, ymin = MAE - MAESD, ymax = MAE + MAESD)) +
+  geom_pointrange() +
+  geom_line() +
+  scale_x_log10()
 ```
 
+```{r}
+diamantes_com_predicoes <- diamantes %>%
+  mutate(
+    price_pred_lasso = predict(modelo, newdata = diamantes)
+  ) %>%
+  select(price, price_pred_lasso, dplyr::everything())
 
+diamantes_com_predicoes
+```
+
+```{r}
+diamantes_com_predicoes %>%
+  ggplot(aes(x = price_pred_lasso, y = price)) +
+  geom_point() +
+  geom_abline(colour = "red")
+```
 
 
 
