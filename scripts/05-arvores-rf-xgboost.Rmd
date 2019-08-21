@@ -37,6 +37,9 @@ receita <- recipe(Status ~ ., data = credit_data %>% filter(base == "treino") %>
 
 # Árvore de decisão
 
+```{r}
+getModelInfo("rpart", FALSE)$rpart
+```
 
 ```{r}
 train_control_rpart <- trainControl(
@@ -77,7 +80,6 @@ plot(modelo_rpart)
 ```{r}
 # apenas para arvores
 rpart.plot(modelo_rpart$finalModel)
-
 pdf("arvore.pdf", 20, 10)
 rpart.plot(modelo_rpart$finalModel)
 dev.off()
@@ -86,10 +88,17 @@ dev.off()
 
 ```{r}
 # Matriz de confusão
-credit_data <- credit_data %>% mutate(pred_rpart = predict(modelo_rpart, ., type = "prob")$bad)
+credit_data <- credit_data %>% 
+  mutate(
+    pred_rpart = predict(modelo_rpart, ., type = "prob")$bad
+  )
 
 credit_data_teste <- credit_data %>% filter(base %in% "teste")
-caret::confusionMatrix(predict(modelo_rpart, credit_data_teste), credit_data_teste$Status, mode = "everything")
+caret::confusionMatrix(
+  predict(modelo_rpart, credit_data_teste), 
+  credit_data_teste$Status, 
+  mode = "everything"
+)
 ```
 
 ```{r}
@@ -100,7 +109,10 @@ credit_data_teste <- credit_data %>%
     Status_para_roc = factor(if_else(Status == "good", 0, 1))
   ) 
 
-roc_teste <- roc(credit_data_teste$pred_rpart, credit_data_teste$Status_para_roc)
+roc_teste <- roc(
+  credit_data_teste$pred_rpart, 
+  credit_data_teste$Status_para_roc
+)
 auc(roc_teste)
 plot(roc_teste)
 ```
@@ -118,7 +130,11 @@ roc_rpart <- credit_data %>%
     roc = map(data, ~ roc(.x$pred_rpart, .x$Status_para_roc)),
     auc = map_dbl(roc, auc)
   )
+roc_rpart
+```
 
+
+```{r}
 roc_rpart$roc %>% walk(plot)
 ```
 
@@ -145,11 +161,15 @@ plotly::ggplotly(roc_plot)
 
 
 # Random Forest 
+```{r}
+infos <- getModelInfo("ranger", FALSE)$ranger
+
+```
 
 ```{r}
 train_control_rf <- trainControl(
-  method = "cv", 
-  number = 5, 
+  method = "cv",
+  number = 5,
   classProbs = TRUE,
   summaryFunction = twoClassSummary,
   verboseIter = 1
@@ -158,22 +178,26 @@ train_control_rf <- trainControl(
 # DICA: rode
 # info <- getModelInfo("ranger", FALSE)$ranger
 # info$parameters
-
-grid_rf <- expand.grid(
-  mtry = c(2, 4, 6), # PREENCHA AQUI
-  min.node.size = seq(10, 100, by = 20),
-  splitrule = "gini"
-)
+# 
+# grid_rf <- expand.grid(
+#   mtry = c(2, 4, 6), # PREENCHA AQUI
+#   min.node.size = seq(10, 100, by = 20),
+#   splitrule = "gini"
+# )
 
 modelo_rf <- train(
-  receita, 
-  credit_data %>% filter(base %in% "treino") %>% select(-base), 
+  receita,
+  credit_data %>% filter(base %in% "treino") %>% select(-base),
   method = "ranger", #PREENCHA AQUI
   importance = "permutation",
   metric = "ROC",
   trControl = train_control_rf,
-  tuneGrid = grid_rf
+  tuneLength = 20
 )
+
+# save(modelo_rf, "modelo_rf.RData")
+
+load("modelo_rf.RData")
 ```
 
 ## Resultado
@@ -187,7 +211,10 @@ plot(modelo_rf)
 ```{r}
 # Predicoes
 
-credit_data <- credit_data %>% mutate(pred_rf = predict(modelo_rf, ., type = "prob")$bad)
+credit_data <- credit_data %>% 
+  mutate(
+    pred_rf = predict(modelo_rf, ., type = "prob")$bad
+  )
 ```
 
 
@@ -219,7 +246,8 @@ rocs
 # Comparacao de modelos
 rocs %>%
   ggplot(aes(x = auc, y = modelo, colour = base)) +
-  geom_point(size = 5)
+  geom_point(size = 5) +
+  theme_minimal(30)
 ```
 
 

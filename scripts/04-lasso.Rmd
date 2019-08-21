@@ -246,11 +246,11 @@ valid <- diamantes[-id_train,]
 ```{r}
 # Receita 
 receita <- recipe(price ~ ., data = treino) %>%
-  step_poly(all_numeric(), -all_outcomes()) %>% 
+  # step_poly(all_numeric(), -all_outcomes()) %>%
   step_center(all_numeric(), -all_outcomes()) %>% 
   step_scale(all_numeric(), -all_outcomes()) %>% 
   step_dummy(all_nominal(), -all_outcomes()) %>% 
-  step_zv(all_predictors()) 
+  step_zv(all_predictors())
 ```
 
 # Exercicio 2
@@ -262,12 +262,15 @@ train_control_lasso <- caret::trainControl(
   number = 5,
   search = "grid",
   verboseIter = TRUE
-  # summaryFunction = twoClassSummary,
-  # classProbs = TRUE
 )
+train_control_lasso
 ```
 
 # Exercicio 3
+```{r}
+getModelInfo("glmnet")$glmnet
+```
+
 ```{r}
 # Tune grid
 # Criar tune_grid para LASSO (glmnet)
@@ -290,14 +293,23 @@ modelo <- train(
   tuneGrid = tune_grid,
   method = "glmnet",
   metric = "MAE"
-  # family = "binomial"
 )
 ```
+
 ```{r}
-ggplot(modelo$results, aes(x = lambda, y = MAE, ymin = MAE - MAESD, ymax = MAE + MAESD)) +
+modelo$results
+```
+
+
+```{r}
+ggplot(
+  modelo$results, 
+  aes(x = lambda, y = MAE, ymin = MAE - MAESD, ymax = MAE + MAESD)) +
   geom_pointrange() +
   geom_line() +
   scale_x_log10()
+
+modelo$bestTune
 ```
 
 ```{r}
@@ -315,6 +327,7 @@ diamantes_com_predicoes %>%
   ggplot(aes(x = price_pred_lasso, y = price)) +
   geom_point() +
   geom_abline(colour = "red")
+
 ```
 
 
