@@ -27,3 +27,24 @@ resultados %>%
   geom_point() +
   geom_line(aes(group = base)) +
   facet_wrap(~metrica, scales = "free")
+
+
+
+roc_plot <- resultados %>%
+  select(base, modelo, roc) %>%
+  mutate(
+    roc = map(roc, ~{
+      .x %>% 
+        unclass %>% 
+        as.data.frame
+    })
+  ) %>%
+  unnest %>%
+  ggplot(aes(x = fpr, y = tpr, colour = modelo, label = cutoffs)) +
+  geom_line() +
+  geom_abline(colour = "grey50") +
+  theme_minimal() +
+  coord_fixed() +
+  facet_wrap(~base)
+
+plotly::ggplotly(roc_plot)
