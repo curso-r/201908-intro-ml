@@ -29,7 +29,6 @@ resultados %>%
   facet_wrap(~metrica, scales = "free")
 
 
-
 roc_plot <- resultados %>%
   select(base, modelo, roc) %>%
   mutate(
