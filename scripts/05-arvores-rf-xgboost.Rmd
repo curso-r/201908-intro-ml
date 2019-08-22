@@ -113,7 +113,7 @@ roc_teste <- roc(
   credit_data_teste$pred_rpart, 
   credit_data_teste$Status_para_roc
 )
-auc(roc_teste)
+AUC::auc(roc_teste)
 plot(roc_teste)
 ```
 
@@ -127,8 +127,8 @@ roc_rpart <- credit_data %>%
   group_by(base) %>%
   nest() %>%
   mutate(
-    roc = map(data, ~ roc(.x$pred_rpart, .x$Status_para_roc)),
-    auc = map_dbl(roc, auc)
+    roc = map(data, ~ AUC::roc(.x$pred_rpart, .x$Status_para_roc)),
+    auc = map_dbl(roc, AUC::auc)
   )
 roc_rpart
 ```
@@ -195,7 +195,7 @@ modelo_rf <- train(
   tuneLength = 20
 )
 
-# save(modelo_rf, "modelo_rf.RData")
+save(modelo_rf, file = "modelo_rf.RData")
 
 load("modelo_rf.RData")
 ```
@@ -235,8 +235,8 @@ rocs <- credit_data %>%
   group_by(base, modelo) %>%
   nest() %>%
   mutate(
-    roc = map(data, ~ roc(.x$valor_predito, .x$Status_para_roc)),
-    auc = map_dbl(roc, auc)
+    roc = map(data, ~ AUC::roc(.x$valor_predito, .x$Status_para_roc)),
+    auc = map_dbl(roc, AUC::auc)
   )
 
 rocs
@@ -284,3 +284,106 @@ Exercício: Ajuste um xgboost usando o caret e responda: qual modelo apresenta a
 DICA 1) troque "ranger" por "xgbTree"
 DICA 2) rode `info <- getModelInfo("xgbTree", FALSE)$xgbTree` e depois consulte `info$parameters`.
 DICA 3) experimente usar o parâmetro `tuneLength = 20` em vez do ``tuneGrid`.
+
+```{r}
+getModelInfo("xgbTree", FALSE)$xgbTree
+```
+
+
+```{r}
+train_control_xgb <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  verboseIter = 1,
+  search = "grid"
+)
+```
+
+
+
+
+```{r}
+tune_grid_xgb <- expand.grid(
+  nrounds          = 500,
+  max_depth        = 6,
+  eta              = 0.01,
+  gamma            = 5.6384934,
+  colsample_bytree = 0.4464347,
+  min_child_weight = 19.0000000,
+  subsample        = 0.9128172
+)
+
+modelo_xgb <- train(
+  receita,
+  credit_data %>% filter(base %in% "treino") %>% select(-base),
+  method = "xgbTree", #PREENCHA AQUI
+  metric = "ROC",
+  trControl = train_control_xgb,
+  tuneGrid = tune_grid_xgb
+)
+
+modelo_xgb$bestTune %>% t
+```
+
+```{r}
+# Predicoes
+
+credit_data <- credit_data %>% 
+  mutate(
+    pred_xgb = predict(modelo_xgb, ., type = "prob")$bad
+  )
+
+credit_data %>% select(starts_with("pred"), everything())
+```
+
+
+```{r}
+#curva ROC  ---- cuidado: códigos de R avançados!
+rocs <- credit_data %>%
+  mutate(
+    Status_para_roc = factor(if_else(Status == "good", 0, 1))
+  ) %>%
+  select(base, Status_para_roc, starts_with("pred")) %>%
+  gather(modelo, valor_predito, starts_with("pred")) %>%
+  group_by(base, modelo) %>%
+  nest() %>%
+  mutate(
+    roc = map(data, ~ AUC::roc(.x$valor_predito, .x$Status_para_roc)),
+    auc = map_dbl(roc, AUC::auc)
+  )
+
+rocs
+```
+
+```{r}
+# Comparacao de modelos
+rocs %>%
+  ggplot(aes(x = auc, y = modelo, colour = base)) +
+  geom_point(size = 5) +
+  theme_minimal(30)
+```
+
+
+```{r}
+# gráfico extra ---- cuidado: códigos de R avançados!
+roc_plot <- rocs %>%
+  select(base, modelo, roc) %>%
+  mutate(
+    roc = map(roc, ~{
+      .x %>% 
+        unclass %>% 
+        as.data.frame
+    })
+  ) %>%
+  unnest %>%
+  ggplot(aes(x = fpr, y = tpr, colour = modelo, label = cutoffs)) +
+  geom_line() +
+  geom_abline(colour = "grey50") +
+  theme_minimal() +
+  coord_fixed() +
+  facet_wrap(~base)
+
+plotly::ggplotly(roc_plot)
+```
